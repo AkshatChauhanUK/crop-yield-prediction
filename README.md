@@ -1,5 +1,7 @@
 # Crop Yield Prediction in India
 
+🔗 **[Live Demo](https://crop-yield-akshat.streamlit.app)** — Try the interactive prediction app
+
 ## Project Overview
 This project predicts crop yield (Quintal/Hectare) across different crops and Indian states using machine learning, based on cultivation and production cost data. It was built as part of a Machine Learning Internship project focused on solving real-world agricultural problems in India.
 
