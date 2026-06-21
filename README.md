@@ -37,11 +37,10 @@ Key findings:
 - **Negative correlation (-0.49)** between Cost of Production per Quintal and Yield — crops with lower per-unit production cost tend to have higher yield.
 
 Charts generated:
-- `yield_by_crop.png`, `yield_by_crop_log.png`
-- `yield_by_state.png`
-- `cost_vs_yield.png`
-- `correlation_heatmap.png`
 
+![Yield by Crop (Log Scale)](outputs/yield_by_crop_log.png)
+
+![Correlation Heatmap](outputs/correlation_heatmap.png)
 ### 3. Model Training (`src/train_model.py`)
 
 Four models were trained and evaluated using **5-fold cross-validation** (more reliable than a single train-test split on a 49-row dataset):
@@ -59,7 +58,8 @@ Four models were trained and evaluated using **5-fold cross-validation** (more r
 
 **Hyperparameter tuning:** Using `GridSearchCV`, the best Random Forest settings were `n_estimators=100` and `max_depth=10`. This gave a small improvement over the default settings (MAE dropped from 14.65 to 13.69). Hyperparameter tuning provided incremental improvement, confirming the model was already well-suited for this dataset size.
 
-Chart: `cv_model_comparison.png` visualizes RMSE and MAE with error bars across all models.
+![Cross-Validated Model Comparison](outputs/cv_model_comparison.png)
+
 ### 4. Feature Importance
 Using the Random Forest model, feature importance was extracted to understand what drives yield predictions:
 
@@ -70,6 +70,8 @@ Using the Random Forest model, feature importance was extracted to understand wh
 5. **State** — least important
 
 **Key insight:** Yield is primarily driven by *which crop* is grown and *how much it costs* to grow/produce it — not by *which state* it is grown in. This suggests that crop-specific agronomic factors matter more than regional/state-specific factors for this dataset.
+![Feature Importance](outputs/feature_importance.png)
+
 ### 5. Interactive Prediction App (`app.py`)
 
 A Streamlit web app was built to make the model usable without writing code. It has two tabs:
