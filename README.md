@@ -92,6 +92,8 @@ A Streamlit web app was built to make the model usable without writing code. It 
 
 - **Predict Yield** — Select a crop and state (the state dropdown automatically shows only states where that crop exists in the training data), enter cultivation/production costs, and get an instant yield prediction using the tuned Random Forest model.
   - **Per-prediction explanation (SHAP):** Below each prediction, an expandable "Why this prediction?" section uses SHAP to show the top 3 specific factors that pushed *that individual prediction* up or down — e.g., "Cost of Production decreased the prediction by 35 quintal/hectare." This goes beyond a single yield number by explaining the model's reasoning for that specific input, not just its overall feature importance.
+  - **Live what-if exploration:** Cost inputs are sliders instead of plain number fields, with a live preview that updates the predicted yield instantly as you drag — no need to click "Predict" to explore different cost scenarios. Clicking "Predict Yield" still gives the full breakdown with the SHAP explanation.
+  - **Model comparison table:** The Data Insights tab includes a live, interactive table of all 5 models' cross-validated metrics (loaded directly from `outputs/cv_model_comparison.csv`), with the best-performing model (lowest MAE) highlighted automatically.
   - If a crop-state combination wasn't seen during training, the app shows a warning that the prediction is an extrapolation.
 - **Data Insights** — All the EDA and model evaluation charts in one place, viewable without opening any code.
 

@@ -70,15 +70,27 @@ def run_prediction_tab(df, model):
         st.caption(f"Showing states where {crop} appears in the training data.")
 
     st.subheader("Cost details (Rs)")
-    cost_a2fl = st.number_input(
-        "Cost of Cultivation - A2+FL (Rs/Hectare)", min_value=0.0, value=15000.0, step=500.0
+    cost_a2fl = st.slider(
+        "Cost of Cultivation - A2+FL (Rs/Hectare)", min_value=0.0, max_value=60000.0, value=15000.0, step=500.0
     )
-    cost_c2 = st.number_input(
-        "Cost of Cultivation - C2 (Rs/Hectare)", min_value=0.0, value=25000.0, step=500.0
+    cost_c2 = st.slider(
+        "Cost of Cultivation - C2 (Rs/Hectare)", min_value=0.0, max_value=90000.0, value=25000.0, step=500.0
     )
-    cost_production = st.number_input(
-        "Cost of Production - C2 (Rs/Quintal)", min_value=0.0, value=1500.0, step=100.0
+    cost_production = st.slider(
+        "Cost of Production - C2 (Rs/Quintal)", min_value=0.0, max_value=5000.0, value=1500.0, step=100.0
     )
+
+    # --- Live preview: updates instantly as sliders move, no button needed ---
+    live_input_df = pd.DataFrame([{
+        "crop": crop,
+        "state": state,
+        "cost_of_cultivation_`_hectare_a2+fl": cost_a2fl,
+        "cost_of_cultivation_`_hectare_c2": cost_c2,
+        "cost_of_production_`_quintal_c2": cost_production,
+    }])
+    live_prediction = model.predict(live_input_df)[0]
+    st.metric("Live Preview", f"{live_prediction:.2f} Quintal/Hectare")
+    st.caption("Updates instantly as you move the sliders. Click below for the full prediction with explanation.")
 
     if st.button("Predict Yield", type="primary"):
         input_df = pd.DataFrame([{
@@ -179,6 +191,34 @@ def run_prediction_tab(df, model):
 
 
 def run_insights_tab():
+    st.header("Model Evaluation")
+    st.write("All models were evaluated using 5-fold cross-validation on the 49-row dataset.")
+
+    try:
+        comparison_df = pd.read_csv("outputs/cv_model_comparison.csv")
+        display_df = comparison_df.rename(columns={
+            "model": "Model",
+            "rmse_mean": "RMSE",
+            "mae_mean": "MAE",
+            "r2_mean": "R²",
+            "r2_std": "R² Std Dev",
+        })[["Model", "RMSE", "MAE", "R²", "R² Std Dev"]]
+
+        best_mae_idx = display_df["MAE"].idxmin()
+
+        st.dataframe(
+            display_df.style.apply(
+                lambda row: ["background-color: #d4edda" if row.name == best_mae_idx else "" for _ in row],
+                axis=1
+            ).format({"RMSE": "{:.2f}", "MAE": "{:.2f}", "R²": "{:.3f}", "R² Std Dev": "{:.3f}"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption("Highlighted row = best model by MAE (lowest error). This is the model powering predictions above.")
+    except Exception:
+        st.warning("Could not load model comparison data.")
+
+    st.divider()
     st.header("Exploratory Data Analysis")
     st.write("Key charts generated during data exploration and model evaluation.")
 
@@ -188,6 +228,7 @@ def run_insights_tab():
         ("outputs/cost_vs_yield.png", "Cost of Cultivation vs Yield"),
         ("outputs/correlation_heatmap.png", "Correlation Heatmap"),
         ("outputs/feature_importance.png", "Feature Importance (Random Forest)"),
+        ("outputs/shap_summary.png", "SHAP Summary (Feature Impact Direction)"),
         ("outputs/actual_vs_predicted.png", "Actual vs Predicted Yield"),
     ]
 
