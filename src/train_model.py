@@ -111,6 +111,38 @@ def tune_random_forest(X, y, cv):
 
     return grid_search.best_estimator_
 
+def tune_xgboost(X, y, cv):
+    """Finds the best XGBoost hyperparameters using grid search."""
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("cat", OneHotEncoder(handle_unknown="ignore"), CATEGORICAL_FEATURES),
+        ],
+        remainder="passthrough",
+    )
+    pipeline = Pipeline(steps=[
+        ("preprocessor", preprocessor),
+        ("model", XGBRegressor(random_state=42, verbosity=0)),
+    ])
+
+    param_grid = {
+        "model__n_estimators": [50, 100, 200, 300],
+        "model__max_depth": [2, 3, 5, 7],
+        "model__learning_rate": [0.01, 0.05, 0.1, 0.2],
+    }
+
+    grid_search = GridSearchCV(
+        pipeline, param_grid, cv=cv, scoring="neg_mean_absolute_error", n_jobs=-1
+    )
+    grid_search.fit(X, y)
+
+    print("\n" + "=" * 60)
+    print("XGBOOST HYPERPARAMETER TUNING")
+    print("=" * 60)
+    print(f"Best parameters: {grid_search.best_params_}")
+    print(f"Best CV MAE: {-grid_search.best_score_:.2f}")
+
+    return grid_search.best_estimator_
+
 def plot_predictions(results_dict, outdir):
     n = len(results_dict)
     fig, axes = plt.subplots(1, n, figsize=(6 * n, 5))
@@ -167,6 +199,38 @@ def plot_feature_importance(rf_pipeline, outdir):
     plt.close()
     print(f"Saved: {path}")
 
+def plot_shap_summary(rf_pipeline, X, outdir):
+    """Generates a SHAP summary plot showing feature impact direction and magnitude."""
+    import shap
+
+    preprocessor = rf_pipeline.named_steps["preprocessor"]
+    model = rf_pipeline.named_steps["model"]
+
+    # Transform X the same way the pipeline does internally
+    X_transformed = preprocessor.transform(X)
+    if hasattr(X_transformed, "toarray"):
+        X_transformed = X_transformed.toarray()
+    X_transformed = X_transformed.astype(float)
+
+    cat_encoder = preprocessor.named_transformers_["cat"]
+    cat_feature_names = list(cat_encoder.get_feature_names_out(CATEGORICAL_FEATURES))
+    all_feature_names = cat_feature_names + NUMERIC_FEATURES
+
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_transformed)
+
+    shap.summary_plot(
+        shap_values,
+        X_transformed,
+        feature_names=all_feature_names,
+        show=False,
+    )
+
+    path = os.path.join(outdir, "shap_summary.png")
+    plt.tight_layout()
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {path}")
 
 def plot_cv_comparison(cv_results_df, outdir):
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
@@ -224,6 +288,8 @@ def main():
         XGBRegressor(n_estimators=200, random_state=42, verbosity=0)
     )
     cv_results.append(cross_validate_model("XGBoost", xgb_pipeline, X, y, cv))
+    tuned_xgb_pipeline = tune_xgboost(X, y, cv)
+    cv_results.append(cross_validate_model("XGBoost (Tuned)", tuned_xgb_pipeline, X, y, cv))
 
     cv_results_df = pd.DataFrame(cv_results)
     print("\n" + "=" * 60)
@@ -249,11 +315,12 @@ def main():
     rf_pipeline.fit(X_train, y_train)
     predictions_for_plot["Random Forest"] = (y_test, rf_pipeline.predict(X_test))
 
-    xgb_pipeline.fit(X_train, y_train)
-    predictions_for_plot["XGBoost"] = (y_test, xgb_pipeline.predict(X_test))
+    tuned_xgb_pipeline.fit(X_train, y_train)
+    predictions_for_plot["XGBoost (Tuned)"] = (y_test, tuned_xgb_pipeline.predict(X_test))
 
     plot_predictions(predictions_for_plot, args.outdir)
     plot_feature_importance(rf_pipeline, args.outdir)
+    plot_shap_summary(tuned_rf_pipeline, X, args.outdir)
 
     print("\nModel training complete.")
 

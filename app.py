@@ -10,6 +10,8 @@ Run:
 import streamlit as st
 import pandas as pd
 import numpy as np
+import shap
+import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -50,6 +52,11 @@ def train_model(df):
     pipeline.fit(X, y)
     return pipeline
 
+@st.cache_resource
+def get_shap_explainer(_model):
+    rf_model = _model.named_steps["model"]
+    return shap.TreeExplainer(rf_model)
+
 def run_prediction_tab(df, model):
     st.header("Enter details")
 
@@ -85,6 +92,72 @@ def run_prediction_tab(df, model):
         prediction = model.predict(input_df)[0]
 
         st.success(f"### Predicted Yield: {prediction:.2f} Quintal/Hectare")
+        # --- SHAP explanation for this specific prediction ---
+        explainer = get_shap_explainer(model)
+        preprocessor = model.named_steps["preprocessor"]
+        input_transformed = preprocessor.transform(input_df)
+        if hasattr(input_transformed, "toarray"):
+            input_transformed = input_transformed.toarray()
+        input_transformed = input_transformed.astype(float)
+
+        cat_encoder = preprocessor.named_transformers_["cat"]
+        cat_feature_names = list(cat_encoder.get_feature_names_out(CATEGORICAL_FEATURES))
+        all_feature_names = cat_feature_names + NUMERIC_FEATURES
+
+        shap_values = explainer.shap_values(input_transformed)
+        if isinstance(shap_values, list):
+            shap_values = shap_values[0]
+        shap_values = np.array(shap_values).flatten()
+
+        
+        if len(shap_values) != len(all_feature_names):
+            st.error(f"Feature mismatch: {len(shap_values)} SHAP values vs {len(all_feature_names)} names. Skipping explanation.")
+            shap_values = None
+
+        base_value = explainer.expected_value
+        if isinstance(base_value, (list, np.ndarray)):
+            base_value = base_value[0]
+        base_value = float(base_value)
+
+        if shap_values is not None:
+            impact_df = pd.DataFrame({
+                "feature": all_feature_names,
+                "shap_value": shap_values,
+            })
+
+            selected_crop_col = f"crop_{crop}"
+            selected_state_col = f"state_{state}"
+
+            def is_relevant(feature_name):
+                if feature_name in (selected_crop_col, selected_state_col):
+                    return True
+                if not feature_name.startswith("crop_") and not feature_name.startswith("state_"):
+                    return True
+                return False
+
+            impact_df = impact_df[impact_df["feature"].apply(is_relevant)].copy()
+            impact_df["abs_impact"] = impact_df["shap_value"].abs()
+            top_features = impact_df.sort_values("abs_impact", ascending=False).head(3)
+
+            with st.expander("🔍 Why this prediction? (See feature impact)"):
+                st.caption(
+                    f"Starting from an average yield of {base_value:.2f}, "
+                    f"here's what pushed this specific prediction up or down:"
+                )
+                for _, row in top_features.iterrows():
+                    feature_name = row["feature"]
+                    shap_val = row["shap_value"]
+
+                    if feature_name == selected_crop_col:
+                        label = f"Growing **{crop}**"
+                    elif feature_name == selected_state_col:
+                        label = f"Being grown in **{state}**"
+                    else:
+                        clean_name = feature_name.replace("_", " ")
+                        label = f"**{clean_name}**"
+
+                    direction = "increased ⬆️" if shap_val > 0 else "decreased ⬇️"
+                    st.write(f"- {label} {direction} the prediction by **{abs(shap_val):.2f}** quintal/hectare")
 
         crop_avg = df[df["crop"] == crop][TARGET].mean()
         st.caption(
