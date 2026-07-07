@@ -189,6 +189,81 @@ def run_prediction_tab(df, model):
         "India's agricultural cost and production dataset (data.gov.in)"
     )
 
+def run_recommendation_tab(df, model):
+    st.header("🌱 Crop Recommendation")
+    st.write("Enter your state and cost details to find which crop gives the best yield for your situation.")
+
+    state = st.selectbox("State", sorted(df["state"].unique()), key="rec_state")
+
+    st.subheader("Your Cost Details (Rs)")
+    cost_a2fl = st.slider(
+        "Cost of Cultivation - A2+FL (Rs/Hectare)",
+        min_value=0.0, max_value=60000.0, value=15000.0, step=500.0,
+        key="rec_a2fl"
+    )
+    cost_c2 = st.slider(
+        "Cost of Cultivation - C2 (Rs/Hectare)",
+        min_value=0.0, max_value=90000.0, value=25000.0, step=500.0,
+        key="rec_c2"
+    )
+    cost_production = st.slider(
+        "Cost of Production - C2 (Rs/Quintal)",
+        min_value=0.0, max_value=5000.0, value=1500.0, step=100.0,
+        key="rec_prod"
+    )
+
+    # Get all crops available in this state
+    available_crops = sorted(df[df["state"] == state]["crop"].unique())
+
+    if len(available_crops) == 0:
+        st.warning("No crops found for this state in the training data.")
+        return
+
+    # Run prediction for every crop in this state
+    rows = []
+    for crop in available_crops:
+        input_df = pd.DataFrame([{
+            "crop": crop,
+            "state": state,
+            "cost_of_cultivation_`_hectare_a2+fl": cost_a2fl,
+            "cost_of_cultivation_`_hectare_c2": cost_c2,
+            "cost_of_production_`_quintal_c2": cost_production,
+        }])
+        predicted_yield = model.predict(input_df)[0]
+        historical_avg = df[df["crop"] == crop][TARGET].mean()
+        rows.append({
+            "Crop": crop,
+            "Predicted Yield (Q/Ha)": round(predicted_yield, 2),
+            "Historical Avg (Q/Ha)": round(historical_avg, 2),
+        })
+
+    result_df = pd.DataFrame(rows).sort_values("Predicted Yield (Q/Ha)", ascending=False).reset_index(drop=True)
+
+    # Highlight best crop
+    best_crop = result_df.iloc[0]["Crop"]
+    best_yield = result_df.iloc[0]["Predicted Yield (Q/Ha)"]
+
+    st.success(f"### 🏆 Best Crop for {state}: **{best_crop}** — {best_yield:.2f} Quintal/Hectare predicted yield")
+
+    st.subheader("All Crops Ranked")
+    st.dataframe(
+        result_df.style.apply(
+            lambda row: ["background-color: #d4edda" if row.name == 0 else "" for _ in row],
+            axis=1
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Bar chart
+    st.subheader("Yield Comparison")
+    chart_df = result_df.set_index("Crop")["Predicted Yield (Q/Ha)"]
+    st.bar_chart(chart_df)
+
+    st.caption(
+        f"Predictions based on your entered cost values. "
+        f"Only crops present in {state}'s training data are shown."
+    )
 
 def run_insights_tab():
     st.header("Model Evaluation")
@@ -241,6 +316,41 @@ def run_insights_tab():
 
 def main():
     st.set_page_config(page_title="Crop Yield Predictor", page_icon="🌾", layout="centered")
+    st.markdown("""
+        <style>
+        h1 {
+            color: #2D5016 !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.5px;
+        }
+        h2, h3 {
+            color: #2D5016 !important;
+            font-weight: 700 !important;
+        }
+        [data-testid="stMetricValue"] {
+            color: #8B5A2B !important;
+            font-size: 2.5rem !important;
+            font-weight: 800 !important;
+        }
+        [data-testid="stMetricLabel"] {
+            color: #2D5016 !important;
+            font-weight: 600 !important;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.8rem !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            font-weight: 600;
+        }
+        div[data-testid="stExpander"] {
+            border: 1px solid #C9A227 !important;
+            border-radius: 8px !important;
+        }
+        div[data-testid="stSlider"] > div > div > div {
+            background-color: #D4CBB5 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
     st.title("🌾 Crop Yield Prediction (India)")
     st.write(
@@ -252,12 +362,15 @@ def main():
     df = load_data()
     model = train_model(df)
 
-    tab1, tab2 = st.tabs(["🔮 Predict Yield", "📊 Data Insights"])
+    tab1, tab2, tab3 = st.tabs(["🔮 Predict Yield", "🌱 Recommend Crop", "📊 Data Insights"])
 
     with tab1:
         run_prediction_tab(df, model)
 
     with tab2:
+        run_recommendation_tab(df, model)
+
+    with tab3:
         run_insights_tab()
 
     
