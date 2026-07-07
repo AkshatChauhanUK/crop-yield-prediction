@@ -12,6 +12,8 @@ import pandas as pd
 import numpy as np
 import shap
 import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -294,20 +296,77 @@ def run_insights_tab():
         st.warning("Could not load model comparison data.")
 
     st.divider()
-    st.header("Exploratory Data Analysis")
-    st.write("Key charts generated during data exploration and model evaluation.")
 
-    chart_info = [
-        ("outputs/yield_by_crop_log.png", "Yield Distribution by Crop (Log Scale)"),
-        ("outputs/yield_by_state.png", "Average Yield by State"),
-        ("outputs/cost_vs_yield.png", "Cost of Cultivation vs Yield"),
-        ("outputs/correlation_heatmap.png", "Correlation Heatmap"),
+    df = load_data()
+
+    # --- Chart 1: Yield by Crop (Interactive Box Plot) ---
+    st.subheader("Yield Distribution by Crop")
+    crop_order = df.groupby("crop")["yield_quintal_hectare"].mean().sort_values(ascending=False).index.tolist()
+    fig1 = px.box(
+        df, x="crop", y="yield_quintal_hectare",
+        category_orders={"crop": crop_order},
+        color="crop",
+        labels={"yield_quintal_hectare": "Yield (Quintal/Hectare)", "crop": "Crop"},
+        title="Yield Distribution by Crop — hover for exact values, click legend to filter"
+    )
+    fig1.update_layout(showlegend=False, plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0")
+    st.plotly_chart(fig1, use_container_width=True)
+
+    # --- Chart 2: Average Yield by State (Interactive Bar) ---
+    st.subheader("Average Yield by State")
+    avg_yield = df.groupby("state")["yield_quintal_hectare"].mean().sort_values(ascending=False).reset_index()
+    avg_yield.columns = ["State", "Avg Yield (Q/Ha)"]
+    fig2 = px.bar(
+        avg_yield, x="Avg Yield (Q/Ha)", y="State",
+        orientation="h",
+        color="Avg Yield (Q/Ha)",
+        color_continuous_scale=["#8B5A2B", "#C9A227", "#2D5016"],
+        labels={"Avg Yield (Q/Ha)": "Average Yield (Quintal/Hectare)"},
+        title="Average Yield by State — hover for exact values"
+    )
+    fig2.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0", coloraxis_showscale=False)
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # --- Chart 3: Cost vs Yield (Interactive Scatter) ---
+    st.subheader("Cost of Cultivation vs Yield")
+    fig3 = px.scatter(
+        df,
+        x="cost_of_cultivation_`_hectare_c2",
+        y="yield_quintal_hectare",
+        color="crop",
+        hover_data=["state", "crop"],
+        labels={
+            "cost_of_cultivation_`_hectare_c2": "Cost of Cultivation C2 (Rs/Hectare)",
+            "yield_quintal_hectare": "Yield (Quintal/Hectare)",
+            "crop": "Crop"
+        },
+        title="Cost of Cultivation vs Yield — hover for crop & state, click legend to filter"
+    )
+    fig3.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0")
+    st.plotly_chart(fig3, use_container_width=True)
+
+    # --- Chart 4: Correlation Heatmap (Interactive) ---
+    st.subheader("Correlation Heatmap")
+    numeric_df = df.select_dtypes(include="number")
+    corr = numeric_df.corr().round(2)
+    fig4 = px.imshow(
+        corr,
+        text_auto=True,
+        color_continuous_scale="RdBu_r",
+        zmin=-1, zmax=1,
+        title="Correlation Heatmap — hover for exact values"
+    )
+    fig4.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0")
+    st.plotly_chart(fig4, use_container_width=True)
+
+    # --- Remaining static charts ---
+    st.subheader("Additional Charts")
+    static_charts = [
         ("outputs/feature_importance.png", "Feature Importance (Random Forest)"),
         ("outputs/shap_summary.png", "SHAP Summary (Feature Impact Direction)"),
         ("outputs/actual_vs_predicted.png", "Actual vs Predicted Yield"),
     ]
-
-    for path, caption in chart_info:
+    for path, caption in static_charts:
         try:
             st.image(path, caption=caption, use_container_width=True)
         except Exception:
