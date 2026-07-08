@@ -125,43 +125,56 @@ def show_recommend_tab(df, model):
     r_c2 = st.slider("Cost of Cultivation - C2 (Rs/Hectare)", 0.0, 90000.0, 25000.0, 500.0, key="r_c2")
     r_prod = st.slider("Cost of Production - C2 (Rs/Quintal)", 0.0, 5000.0, 1500.0, 100.0, key="r_prod")
 
-    crops = sorted(df[df["state"] == rec_state]["crop"].unique())
-    if not crops:
-        st.warning("No crops found for this state.")
-        return
+    if st.button("Find Best Crop", type="primary", key="r_btn"):
+        crops = sorted(df[df["state"] == rec_state]["crop"].unique())
+        if not crops:
+            st.warning("No crops found for this state.")
+            return
 
-    rows = []
-    for c in crops:
-        inp = pd.DataFrame([{
-            "crop": c, "state": rec_state,
-            "cost_of_cultivation_`_hectare_a2+fl": r_a2fl,
-            "cost_of_cultivation_`_hectare_c2": r_c2,
-            "cost_of_production_`_quintal_c2": r_prod,
-        }])
-        rows.append({
-            "Crop": c,
-            "Predicted Yield (Q/Ha)": round(model.predict(inp)[0], 2),
-            "Historical Avg (Q/Ha)": round(df[df["crop"] == c][TARGET].mean(), 2),
-        })
+        rows = []
+        for c in crops:
+            inp = pd.DataFrame([{
+                "crop": c, "state": rec_state,
+                "cost_of_cultivation_`_hectare_a2+fl": r_a2fl,
+                "cost_of_cultivation_`_hectare_c2": r_c2,
+                "cost_of_production_`_quintal_c2": r_prod,
+            }])
+            rows.append({
+                "Crop": c,
+                "Predicted Yield (Q/Ha)": round(model.predict(inp)[0], 2),
+                "Historical Avg (Q/Ha)": round(df[df["crop"] == c][TARGET].mean(), 2),
+            })
 
-    res = pd.DataFrame(rows).sort_values("Predicted Yield (Q/Ha)", ascending=False).reset_index(drop=True)
-    st.success(f"### 🏆 Best Crop for {rec_state}: **{res.iloc[0]['Crop']}** — {res.iloc[0]['Predicted Yield (Q/Ha)']:.2f} Q/Ha")
+        res = pd.DataFrame(rows).sort_values("Predicted Yield (Q/Ha)", ascending=False).reset_index(drop=True)
+        st.success(f"### 🏆 Best Crop for {rec_state}: **{res.iloc[0]['Crop']}** — {res.iloc[0]['Predicted Yield (Q/Ha)']:.2f} Q/Ha")
 
-    st.subheader("All Crops Ranked")
-    st.dataframe(
-        res.style.apply(lambda r: ["background-color: #d4edda" if r.name == 0 else "" for _ in r], axis=1),
-        use_container_width=True, hide_index=True,
-    )
+        st.subheader("All Crops Ranked")
+        st.dataframe(
+            res.style.apply(lambda r: ["background-color: #d4edda" if r.name == 0 else "" for _ in r], axis=1),
+            use_container_width=True, hide_index=True,
+        )
 
-    fig = px.bar(res, x="Crop", y="Predicted Yield (Q/Ha)", color="Predicted Yield (Q/Ha)",
-                 color_continuous_scale=["#8B5A2B", "#C9A227", "#2D5016"],
-                 title=f"Predicted Yield by Crop — {rec_state}")
-    fig.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0", coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"Only crops present in {rec_state}'s training data are shown.")
+        fig = px.bar(res, x="Crop", y="Predicted Yield (Q/Ha)", color="Predicted Yield (Q/Ha)",
+                     color_continuous_scale=["#8B5A2B", "#C9A227", "#2D5016"],
+                     title=f"Predicted Yield by Crop — {rec_state}")
+        fig.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0", coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.caption(f"Only crops present in {rec_state}'s training data are shown.")
 
 def show_insights_tab(df):
     st.header("Model Evaluation")
+    
+    if "show_insights" not in st.session_state:
+        st.session_state.show_insights = False
+    
+    if st.button("Load Charts", type="primary", key="ins_btn"):
+        st.session_state.show_insights = True
+    
+    if not st.session_state.show_insights:
+        st.info("Click 'Load Charts' to view model evaluation and EDA charts.")
+        return
+    
     try:
         cdf = pd.read_csv("outputs/cv_model_comparison.csv")
         ddf = cdf.rename(columns={"model":"Model","rmse_mean":"RMSE","mae_mean":"MAE","r2_mean":"R²","r2_std":"R² Std Dev"})[["Model","RMSE","MAE","R²","R² Std Dev"]]
