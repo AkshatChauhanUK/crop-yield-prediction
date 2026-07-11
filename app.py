@@ -42,6 +42,28 @@ def train_model(df):
 def get_shap_explainer(_model):
     return shap.TreeExplainer(_model.named_steps["model"])
 
+def cost_input(label, min_v, max_v, default, step, base_key):
+    slider_key = f"{base_key}_s"
+    num_key = f"{base_key}_n"
+    if slider_key not in st.session_state:
+        st.session_state[slider_key] = default
+    if num_key not in st.session_state:
+        st.session_state[num_key] = default
+
+    def sync_from_num():
+        st.session_state[slider_key] = st.session_state[num_key]
+
+    def sync_from_slider():
+        st.session_state[num_key] = st.session_state[slider_key]
+
+    c1, c2 = st.columns([4, 1.4])
+    with c1:
+        st.slider(label, min_v, max_v, step=step, key=slider_key, on_change=sync_from_slider)
+    with c2:
+        st.number_input(" ", min_v, max_v, step=step, key=num_key,
+                         on_change=sync_from_num, label_visibility="collapsed")
+    return st.session_state[slider_key]
+
 def show_predict_tab(df, model):
     st.header("Enter details")
     col1, col2 = st.columns(2)
@@ -53,10 +75,9 @@ def show_predict_tab(df, model):
         st.caption(f"Showing states where {crop} appears in the training data.")
 
     st.subheader("Cost details (Rs)")
-    cost_a2fl = st.slider("Cost of Cultivation - A2+FL (Rs/Hectare)", 0.0, 60000.0, 15000.0, 500.0, key="p_a2fl")
-    cost_c2 = st.slider("Cost of Cultivation - C2 (Rs/Hectare)", 0.0, 90000.0, 25000.0, 500.0, key="p_c2")
-    cost_prod = st.slider("Cost of Production - C2 (Rs/Quintal)", 0.0, 5000.0, 1500.0, 100.0, key="p_prod")
-
+    cost_a2fl = cost_input("Cost of Cultivation - A2+FL (Rs/Hectare)", 0.0, 60000.0, 15000.0, 500.0, "p_a2fl")
+    cost_c2 = cost_input("Cost of Cultivation - C2 (Rs/Hectare)", 0.0, 90000.0, 25000.0, 500.0, "p_c2")
+    cost_prod = cost_input("Cost of Production - C2 (Rs/Quintal)", 0.0, 5000.0, 1500.0, 100.0, "p_prod")
     input_df = pd.DataFrame([{
         "crop": crop, "state": state,
         "cost_of_cultivation_`_hectare_a2+fl": cost_a2fl,
@@ -121,9 +142,9 @@ def show_recommend_tab(df, model):
 
     rec_state = st.selectbox("State", sorted(df["state"].unique()), key="r_state")
     st.subheader("Your Cost Details (Rs)")
-    r_a2fl = st.slider("Cost of Cultivation - A2+FL (Rs/Hectare)", 0.0, 60000.0, 15000.0, 500.0, key="r_a2fl")
-    r_c2 = st.slider("Cost of Cultivation - C2 (Rs/Hectare)", 0.0, 90000.0, 25000.0, 500.0, key="r_c2")
-    r_prod = st.slider("Cost of Production - C2 (Rs/Quintal)", 0.0, 5000.0, 1500.0, 100.0, key="r_prod")
+    r_a2fl = cost_input("Cost of Cultivation - A2+FL (Rs/Hectare)", 0.0, 60000.0, 15000.0, 500.0, "r_a2fl")
+    r_c2 = cost_input("Cost of Cultivation - C2 (Rs/Hectare)", 0.0, 90000.0, 25000.0, 500.0, "r_c2")
+    r_prod = cost_input("Cost of Production - C2 (Rs/Quintal)", 0.0, 5000.0, 1500.0, 100.0, "r_prod")
 
     if st.button("Find Best Crop", type="primary", key="r_btn"):
         crops = sorted(df[df["state"] == rec_state]["crop"].unique())
@@ -162,7 +183,7 @@ def show_recommend_tab(df, model):
 
         st.caption(f"Only crops present in {rec_state}'s training data are shown.")
 
-def show_insights_tab(df):
+def show_insights_tab(df, model):
     st.header("Model Evaluation")
     
     if "show_insights" not in st.session_state:
@@ -222,16 +243,71 @@ def show_insights_tab(df):
     fig4.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0")
     st.plotly_chart(fig4, use_container_width=True)
 
-    st.subheader("Additional Charts")
-    for path, cap in [
-        ("outputs/feature_importance.png", "Feature Importance (Random Forest)"),
-        ("outputs/shap_summary.png", "SHAP Summary"),
-        ("outputs/actual_vs_predicted.png", "Actual vs Predicted"),
-    ]:
-        try:
-            st.image(path, caption=cap, use_container_width=True)
-        except Exception:
-            st.warning(f"Could not load: {path}")
+    # --- Feature Importance (interactive) ---
+    st.subheader("Feature Importance (Random Forest)")
+    preprocessor = model.named_steps["preprocessor"]
+    rf = model.named_steps["model"]
+    cat_enc = preprocessor.named_transformers_["cat"]
+    feat_names = list(cat_enc.get_feature_names_out(CATEGORICAL_FEATURES)) + NUMERIC_FEATURES
+
+    fi_df = pd.DataFrame({"feature": feat_names, "importance": rf.feature_importances_})
+    fi_df["group"] = fi_df["feature"].apply(
+        lambda f: "crop" if f.startswith("crop_") else ("state" if f.startswith("state_") else f)
+    )
+    grouped_fi = fi_df.groupby("group")["importance"].sum().sort_values(ascending=True).reset_index()
+    fig5 = px.bar(grouped_fi, x="importance", y="group", orientation="h",
+                  color="importance", color_continuous_scale=["#8B5A2B", "#C9A227", "#2D5016"],
+                  labels={"importance": "Importance", "group": "Feature"},
+                  title="What drives yield predictions?")
+    fig5.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0", coloraxis_showscale=False)
+    st.plotly_chart(fig5, use_container_width=True)
+
+    # --- SHAP Summary (interactive) ---
+    st.subheader("SHAP Summary")
+    explainer = get_shap_explainer(model)
+    X_all = df[CATEGORICAL_FEATURES + NUMERIC_FEATURES]
+    X_all_t = preprocessor.transform(X_all)
+    if hasattr(X_all_t, "toarray"):
+        X_all_t = X_all_t.toarray()
+    X_all_t = X_all_t.astype(float)
+
+    sv_all = explainer.shap_values(X_all_t)
+    if isinstance(sv_all, list):
+        sv_all = sv_all[0]
+    sv_all = np.array(sv_all)
+
+    shap_df = pd.DataFrame(sv_all, columns=feat_names)
+    shap_long = shap_df.melt(var_name="feature", value_name="shap_value")
+    shap_long["group"] = shap_long["feature"].apply(
+        lambda f: "crop" if f.startswith("crop_") else ("state" if f.startswith("state_") else f)
+    )
+    mean_abs = (shap_long.groupby("group")["shap_value"]
+                .apply(lambda s: s.abs().mean())
+                .sort_values(ascending=True).reset_index())
+    mean_abs.columns = ["Feature", "Mean |SHAP value|"]
+
+    fig6 = px.bar(mean_abs, x="Mean |SHAP value|", y="Feature", orientation="h",
+                  color="Mean |SHAP value|", color_continuous_scale=["#8B5A2B", "#C9A227", "#2D5016"],
+                  title="SHAP Feature Impact (mean absolute value)")
+    fig6.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0", coloraxis_showscale=False)
+    st.plotly_chart(fig6, use_container_width=True)
+    st.caption("Hover for exact values. Individual crop/state dummy variables are summed into single bars.")
+
+    # --- Actual vs Predicted (interactive) ---
+    st.subheader("Actual vs Predicted")
+    preds = model.predict(df[CATEGORICAL_FEATURES + NUMERIC_FEATURES])
+    avp_df = pd.DataFrame({
+        "Actual": df[TARGET], "Predicted": preds,
+        "Crop": df["crop"], "State": df["state"],
+    })
+    max_val = max(avp_df["Actual"].max(), avp_df["Predicted"].max())
+    fig7 = px.scatter(avp_df, x="Actual", y="Predicted", color="Crop", hover_data=["State"],
+                       title="Actual vs Predicted Yield")
+    fig7.add_shape(type="line", x0=0, y0=0, x1=max_val, y1=max_val,
+                   line=dict(color="gray", dash="dash"))
+    fig7.update_layout(plot_bgcolor="#FAF7F0", paper_bgcolor="#FAF7F0")
+    st.plotly_chart(fig7, use_container_width=True)
+    st.caption("Note: this shows in-sample fit, not cross-validated performance — see the model comparison table above for honest CV metrics.")
 
 def main():
     st.set_page_config(page_title="Crop Yield Predictor", page_icon="🌾", layout="centered")
@@ -265,7 +341,7 @@ def main():
         show_recommend_tab(df, model)
 
     with tab3:
-        show_insights_tab(df)
+        show_insights_tab(df, model)
 
 if __name__ == "__main__":
     main()
