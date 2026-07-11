@@ -88,14 +88,14 @@ The chart above groups all crop and state dummy variables into single "crop" and
 
 ### 5. Interactive Prediction App (`app.py`)
 
-A Streamlit web app was built to make the model usable without writing code. It has two tabs:
+A Streamlit web app was built to make the model usable without writing code. It has three tabs:
 
 - **Predict Yield** — Select a crop and state (the state dropdown automatically shows only states where that crop exists in the training data), enter cultivation/production costs, and get an instant yield prediction using the tuned Random Forest model.
-  - **Per-prediction explanation (SHAP):** Below each prediction, an expandable "Why this prediction?" section uses SHAP to show the top 3 specific factors that pushed *that individual prediction* up or down — e.g., "Cost of Production decreased the prediction by 35 quintal/hectare." This goes beyond a single yield number by explaining the model's reasoning for that specific input, not just its overall feature importance.
-  - **Live what-if exploration:** Cost inputs are sliders instead of plain number fields, with a live preview that updates the predicted yield instantly as you drag — no need to click "Predict" to explore different cost scenarios. Clicking "Predict Yield" still gives the full breakdown with the SHAP explanation.
-  - **Model comparison table:** The Data Insights tab includes a live, interactive table of all 5 models' cross-validated metrics (loaded directly from `outputs/cv_model_comparison.csv`), with the best-performing model (lowest MAE) highlighted automatically.
+  - **Per-prediction explanation (SHAP):** Below each prediction, an expandable "Why this prediction?" section uses SHAP to show the top 3 specific factors that pushed *that individual prediction* up or down — e.g., "Cost of Production decreased the prediction by 35 quintal/hectare."
+  - **Live what-if exploration:** Each cost field has a slider paired with a synced number input, so values can be dragged or typed precisely. A live preview updates the predicted yield instantly as either is adjusted — no need to click "Predict" to explore different cost scenarios. Clicking "Predict Yield" still gives the full breakdown with the SHAP explanation.
   - If a crop-state combination wasn't seen during training, the app shows a warning that the prediction is an extrapolation.
-- **Data Insights** — All the EDA and model evaluation charts in one place, viewable without opening any code.
+- **Recommend Crop** — The reverse lookup: enter a state and budget (cultivation/production costs), and the app ranks every crop grown in that state by predicted yield, highlighting the best option with an interactive bar chart.
+- **Data Insights** — All EDA and model evaluation charts, fully interactive (Plotly): yield distribution by crop, average yield by state, cost vs. yield, correlation heatmap, feature importance, SHAP summary, and actual vs. predicted — all support hover, zoom, and legend filtering. Also includes a live, interactive table of all 5 models' cross-validated metrics (loaded directly from `outputs/cv_model_comparison.csv`), with the best-performing model (lowest MAE) highlighted automatically.
 
 Run it with:
 ```bash
@@ -129,11 +129,16 @@ streamlit run app.py
 - Does not account for external factors like rainfall, soil quality, or irrigation access, which likely influence yield significantly
 - State-wise sample sizes are uneven, which may bias average comparisons
 
+## Recently Completed
+- [x] Crop recommendation feature (reverse lookup: state + budget → best-yielding crop)
+- [x] Interactive Plotly charts for all Data Insights visuals (including feature importance, SHAP summary, and actual vs predicted — previously static PNGs)
+- [x] Slider + number input for precise cost entry (previously slider-only)
+
 ## Future Improvements
-- Incorporate rainfall and soil quality data for more accurate predictions
-- Expand the dataset with multi-year data to capture year-over-year trends
-- Add prediction confidence intervals instead of single-point estimates
-- Explore SHAP dependence plots for deeper analysis of how specific feature values affect predictions across the whole dataset
+- [ ] **Time series / multi-year analysis** — Blocked until a dataset with a `year` column is available; the current 49-row dataset is single-year. This would enable year-over-year yield trend visualization by crop/state.
+- [ ] **Incorporate rainfall and soil quality data** — External factors not currently in the model; likely to improve accuracy significantly since weather/soil are major yield drivers.
+- [ ] **Prediction confidence intervals** — Currently gives single-point estimates only; could use quantile regression or bootstrapped Random Forest predictions to show a range instead of one number.
+- [ ] **Expand dataset size** — 49 rows is small for ML; more state/crop/year combinations would improve robustness (ties into the time series point above).
 
 ## Author
 Built as part of a Machine Learning Internship project — UpSkill Campus / UCT / The IoT Academy
