@@ -1,16 +1,32 @@
 # Crop Yield Prediction in India
 
+![Python](https://img.shields.io/badge/Python-3.13-blue)
+![Best Model](https://img.shields.io/badge/Best%20Model-Random%20Forest-green)
+![R²](https://img.shields.io/badge/R²-0.962-brightgreen)
+![Live Demo](https://img.shields.io/badge/Live-Streamlit-red)
+
 🔗 **[Live Demo](https://crop-yield-akshat.streamlit.app)** — Try the interactive prediction app
 
 ## Project Overview
-This project predicts crop yield (Quintal/Hectare) across different crops and Indian states using machine learning, based on cultivation and production cost data. It was built as part of a Machine Learning Internship project focused on solving real-world agricultural problems in India.
+This project predicts crop yield (Quintal/Hectare) across different crops and Indian states using machine learning, based on cultivation and production cost data. Built as part of a Machine Learning Internship project focused on solving real-world agricultural problems in India.
 
 ## Problem Statement
 India's agricultural sector supports a large share of its population, yet farmers and policymakers often lack data-driven tools to estimate crop yield based on cultivation costs. This project builds a predictive model that estimates yield given the crop type, state, and cost of cultivation/production — helping identify which factors most influence yield.
 
+## Project Structure
+```
+crop-yield-prediction/
+├── src/
+│   ├── preprocess.py    # Data cleaning
+│   ├── eda.py           # Exploratory analysis
+│   └── train_model.py   # Model training & evaluation
+├── outputs/             # Charts and saved model
+├── data/                # Raw and cleaned dataset
+└── app.py               # Streamlit web app
+```
+
 ## Dataset
 - **Source:** Government of India agricultural cost and production dataset (data.gov.in)
-- **File used:** `datafile (1).csv`
 - **Rows:** 49 (after cleaning)
 - **Columns:**
   - `crop` — Crop name (e.g., Wheat, Rice, Maize, Sugarcane)
@@ -20,30 +36,26 @@ India's agricultural sector supports a large share of its population, yet farmer
   - `cost_of_production_quintal_c2` — Cost of production (Rs/Quintal, C2 method)
   - `yield_quintal_hectare` — **Target variable**: Yield in Quintal/Hectare
 
-## Project Workflow
+## Approach
 
 ### 1. Data Cleaning (`src/preprocess.py`)
-- Standardized column names
-- Cleaned categorical text (Crop, State)
+- Standardized column names and categorical text (Crop, State)
 - Converted all numeric columns properly, handling missing/invalid values
 - Removed duplicate rows
 - Result: 49 clean rows, 0 missing values
 
 ### 2. Exploratory Data Analysis (`src/eda.py`)
 Key findings:
-- **Sugarcane has a dramatically higher yield** (700-1000+ Quintal/Hectare) compared to all other crops, due to its high-biomass nature. A log-scale chart was used to visualize all crops fairly.
-- **Tamil Nadu, Karnataka, and Maharashtra** show the highest average yields, largely influenced by sugarcane cultivation in those states.
-- **Strong positive correlation (0.87)** between Cost of Cultivation (C2) and Yield — higher investment generally aligns with higher yield.
-- **Negative correlation (-0.49)** between Cost of Production per Quintal and Yield — crops with lower per-unit production cost tend to have higher yield.
-
-Charts generated:
+- **Sugarcane has a dramatically higher yield** (700-1000+ Quintal/Hectare) compared to all other crops — a log-scale chart was used to visualize all crops fairly
+- **Tamil Nadu, Karnataka, and Maharashtra** show the highest average yields, largely influenced by sugarcane cultivation
+- **Strong positive correlation (0.87)** between Cost of Cultivation (C2) and Yield
+- **Negative correlation (-0.49)** between Cost of Production per Quintal and Yield
 
 ![Yield by Crop (Log Scale)](outputs/yield_by_crop_log.png)
-
 ![Correlation Heatmap](outputs/correlation_heatmap.png)
-### 3. Model Training (`src/train_model.py`)
 
-Four models were trained and evaluated using **5-fold cross-validation** (more reliable than a single train-test split on a 49-row dataset):
+### 3. Model Training (`src/train_model.py`)
+Four models trained and evaluated using **5-fold cross-validation** (more reliable than a single train-test split on a 49-row dataset):
 
 | Model | RMSE | MAE | R² | R² Std Dev |
 |---|---|---|---|---|
@@ -53,62 +65,48 @@ Four models were trained and evaluated using **5-fold cross-validation** (more r
 | XGBoost | 51.53 | 23.84 | 0.468 | 0.925 |
 | XGBoost (Tuned) | 53.78 | 24.17 | 0.584 | 0.682 |
 
-**Key insight — why cross-validation mattered:** An initial single train-test split made Linear Regression look competitive (R² = 0.949). However, 5-fold cross-validation revealed the truth: Linear Regression's R² is actually **-29.57 on average**, with an enormous standard deviation (61.03) — meaning its performance varies wildly depending on which rows land in the test fold (especially when Sugarcane, an extreme outlier, is involved). This shows that small datasets can give misleadingly optimistic results with a single split, and cross-validation is essential for an honest evaluation.
+**Why cross-validation mattered:** An initial single train-test split made Linear Regression look competitive (R² = 0.949). 5-fold cross-validation revealed the truth: its R² is actually **-29.57 on average** with enormous variance — showing that small datasets can give misleadingly optimistic results with a single split.
 
-**Random Forest is the clear, consistent winner** — both in raw performance (lowest RMSE/MAE) and in stability (lowest standard deviation across folds). XGBoost, despite being a powerful algorithm, underperforms here because it needs more data than this 49-row dataset provides, leading to inconsistent results across folds.This held true even after tuning — GridSearchCV was also applied to XGBoost (testing n_estimators, max_depth, and learning_rate), but it only improved MAE marginally (23.84 → 24.17, essentially no change) and its R² remained far behind Random Forest's 0.962, confirming the model choice was validated, not just assumed.
+**Random Forest is the clear winner** — best performance (lowest RMSE/MAE) and highest stability (lowest std dev across folds). XGBoost underperforms because it needs more data than this 49-row dataset provides. GridSearchCV was applied to XGBoost too (testing n_estimators, max_depth, learning_rate) but only improved MAE marginally, confirming Random Forest as the right choice.
 
-**Hyperparameter tuning:** Using `GridSearchCV`, the best Random Forest settings were `n_estimators=100` and `max_depth=10`. This gave a small improvement over the default settings (MAE dropped from 14.65 to 13.69). Hyperparameter tuning provided incremental improvement, confirming the model was already well-suited for this dataset size.
+**Best hyperparameters:** `n_estimators=100`, `max_depth=10`
 
 ![Cross-Validated Model Comparison](outputs/cv_model_comparison.png)
 
-### 4. Feature Importance
-
-Using the Random Forest model, feature importance was extracted to understand what drives yield predictions:
+### 4. Feature Importance & SHAP Analysis
 
 ![Feature Importance](outputs/feature_importance.png)
 
-1. **Cost of Production (per Quintal)** — most important factor
+Random Forest feature importance ranking:
+1. **Cost of Production (per Quintal)** — most important
 2. **Crop type** — second most important
-3. **Cost of Cultivation (A2+FL)**
-4. **Cost of Cultivation (C2)**
-5. **State** — least important
+3. **Cost of Cultivation (A2+FL & C2)**
+4. **State** — least important
 
-**Key insight:** Yield is primarily driven by *which crop* is grown and *how much it costs* to grow/produce it — not by *which state* it is grown in.
+**Key insight:** Yield is primarily driven by *which crop* is grown and *how much it costs* to produce — not by *which state* it is grown in.
 
-#### A Closer Look: SHAP Analysis
-
-The chart above groups all crop and state dummy variables into single "crop" and "state" categories. For a more precise, per-feature view, SHAP (SHapley Additive exPlanations) values were calculated on the tuned Random Forest model:
+SHAP analysis for a more precise per-feature view:
 
 ![SHAP Summary Plot](outputs/shap_summary.png)
 
-**Key insights:**
-- **`crop_Sugarcane` is the single most influential individual feature** — when a row is Sugarcane, it pushes the predicted yield up dramatically (SHAP values of 200-300+), consistent with the EDA finding that Sugarcane is a major outlier in yield.
-- **Cost of Production (per Quintal) has the most *balanced* impact** — unlike Sugarcane, it pushes predictions both up and down depending on its value, making it the most informative *continuous* feature in the model.
-- **Individual state features cluster tightly near zero** (Tamil Nadu, Maharashtra, Andhra Pradesh, etc.), confirming that state has minimal influence on yield once crop type and cost are accounted for.
+- **`crop_Sugarcane` is the single most influential feature** — pushes predicted yield up by 200-300+ quintal/hectare
+- **Cost of Production has the most balanced impact** — pushes predictions both up and down, making it the most informative continuous feature
+- **Individual state features cluster near zero** — confirming state has minimal influence once crop and cost are accounted for
 
 ### 5. Interactive Prediction App (`app.py`)
+A Streamlit web app with three tabs:
 
-A Streamlit web app was built to make the model usable without writing code. It has three tabs:
+- **Predict Yield** — Select crop and state, enter costs, get instant prediction with:
+  - **SHAP explanation** ("Why this prediction?") showing top 3 factors driving each individual prediction
+  - **Live what-if sliders** — prediction updates instantly as cost inputs change, no button click needed
+  - Extrapolation warning for unseen crop-state combinations
 
-- **Predict Yield** — Select a crop and state (the state dropdown automatically shows only states where that crop exists in the training data), enter cultivation/production costs, and get an instant yield prediction using the tuned Random Forest model.
-  - **Per-prediction explanation (SHAP):** Below each prediction, an expandable "Why this prediction?" section uses SHAP to show the top 3 specific factors that pushed *that individual prediction* up or down — e.g., "Cost of Production decreased the prediction by 35 quintal/hectare."
-  - **Live what-if exploration:** Each cost field has a slider paired with a synced number input, so values can be dragged or typed precisely. A live preview updates the predicted yield instantly as either is adjusted — no need to click "Predict" to explore different cost scenarios. Clicking "Predict Yield" still gives the full breakdown with the SHAP explanation.
-  - If a crop-state combination wasn't seen during training, the app shows a warning that the prediction is an extrapolation.
-- **Recommend Crop** — The reverse lookup: enter a state and budget (cultivation/production costs), and the app ranks every crop grown in that state by predicted yield, highlighting the best option with an interactive bar chart.
-- **Data Insights** — All EDA and model evaluation charts, fully interactive (Plotly): yield distribution by crop, average yield by state, cost vs. yield, correlation heatmap, feature importance, SHAP summary, and actual vs. predicted — all support hover, zoom, and legend filtering. Also includes a live, interactive table of all 5 models' cross-validated metrics (loaded directly from `outputs/cv_model_comparison.csv`), with the best-performing model (lowest MAE) highlighted automatically.
+- **Recommend Crop** — Reverse lookup: enter state + budget → app ranks all crops by predicted yield with interactive bar chart
 
-Run it with:
-```bash
-streamlit run app.py
-```
+- **Data Insights** — All EDA and model evaluation charts as interactive Plotly visuals (zoom, hover, filter). Includes a live model comparison table with the best model auto-highlighted.
+
 ## Tech Stack
-- Python 3.13
-- pandas, numpy — data handling
-- matplotlib, seaborn — visualization
-- scikit-learn — machine learning (Linear Regression, Random Forest)
-- xgboost — gradient boosting model for comparison
-- shap — model explainability (global feature impact + per-prediction explanations)
-- streamlit — interactive web app for predictions
+Python, pandas, numpy, scikit-learn, XGBoost, SHAP, Streamlit, matplotlib, seaborn, plotly
 
 ## How to Run
 ```bash
@@ -123,22 +121,18 @@ python src/train_model.py --input data/cleaned_crop_data.csv --outdir outputs
 
 # 4. Launch the interactive prediction app
 streamlit run app.py
+```
 
 ## Limitations
-- Small dataset (49 rows) limits statistical robustness, especially for test-set evaluation
-- Does not account for external factors like rainfall, soil quality, or irrigation access, which likely influence yield significantly
+- Small dataset (49 rows) limits statistical robustness
+- Does not account for external factors like rainfall, soil quality, or irrigation access
 - State-wise sample sizes are uneven, which may bias average comparisons
 
-## Recently Completed
-- [x] Crop recommendation feature (reverse lookup: state + budget → best-yielding crop)
-- [x] Interactive Plotly charts for all Data Insights visuals (including feature importance, SHAP summary, and actual vs predicted — previously static PNGs)
-- [x] Slider + number input for precise cost entry (previously slider-only)
-
 ## Future Improvements
-- [ ] **Time series / multi-year analysis** — Blocked until a dataset with a `year` column is available; the current 49-row dataset is single-year. This would enable year-over-year yield trend visualization by crop/state.
-- [ ] **Incorporate rainfall and soil quality data** — External factors not currently in the model; likely to improve accuracy significantly since weather/soil are major yield drivers.
-- [ ] **Prediction confidence intervals** — Currently gives single-point estimates only; could use quantile regression or bootstrapped Random Forest predictions to show a range instead of one number.
-- [ ] **Expand dataset size** — 49 rows is small for ML; more state/crop/year combinations would improve robustness (ties into the time series point above).
+- **Multi-year time series analysis** — Blocked until a dataset with a `year` column is available; would enable year-over-year yield trend visualization by crop/state
+- **Incorporate rainfall and soil quality data** — External factors not currently in the model; likely to improve accuracy significantly
+- **Prediction confidence intervals** — Currently gives single-point estimates; could use quantile regression or bootstrapped Random Forest predictions
+- **Expand dataset size** — 49 rows is small for ML; more state/crop/year combinations would improve robustness
 
 ## Author
-Built as part of a Machine Learning Internship project — UpSkill Campus / UCT / The IoT Academy
+Akshat Chauhan — built as part of a 3rd-year B.Tech CSE ML internship project.
