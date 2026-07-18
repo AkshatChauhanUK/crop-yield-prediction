@@ -23,6 +23,10 @@ NUMERIC_FEATURES = [
 def load_data():
     return pd.read_csv("data/cleaned_crop_data.csv")
 
+@st.cache_data
+def load_production_data():
+    return pd.read_csv("data/crop_production.csv")
+
 @st.cache_resource
 def train_model(df):
     X = df[CATEGORICAL_FEATURES + NUMERIC_FEATURES]
@@ -309,6 +313,157 @@ def show_insights_tab(df, model):
     st.plotly_chart(fig7, use_container_width=True)
     st.caption("Note: this shows in-sample fit, not cross-validated performance — see the model comparison table above for honest CV metrics.")
 
+def show_trends_tab(df):
+
+    st.header("📈 Yield Trends")
+
+    # Create Yield column
+    df = df.copy()
+    df = df[df["Area"] > 0]
+    df["Yield"] = df["Production"] / df["Area"]
+
+    #####################################
+    # 1 National Year-over-Year Trend
+    #####################################
+
+    st.subheader("National Year-over-Year Yield Trend")
+
+    # Exclude Cotton(lint) — different yield units, skews the chart
+    EXCLUDE_CROPS = ["Cotton(lint)"]
+
+    top_crops = (
+        df[~df["Crop"].isin(EXCLUDE_CROPS)]
+        .groupby("Crop")["Area"]
+        .sum()
+        .nlargest(5)
+        .index
+    )
+
+    yearly = (
+        df[df["Crop"].isin(top_crops)]
+        .groupby(["Crop_Year", "Crop"])["Yield"]
+        .mean()
+        .reset_index()
+    )
+
+    fig1 = px.line(
+        yearly,
+        x="Crop_Year",
+        y="Yield",
+        color="Crop",
+        markers=True,
+        title="Top 5 Crops Over Time",
+        labels={"Crop_Year": "Year", "Yield": "Avg Yield (Kg/Ha)"}
+    )
+    fig1.update_layout(
+        plot_bgcolor="#FAF7F0",
+        paper_bgcolor="#FAF7F0",
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+    #####################################
+    # 2 State Comparison
+    #####################################
+
+    st.subheader("State-wise Comparison")
+
+    selected_year = st.selectbox(
+        "Select Year",
+        sorted(df["Crop_Year"].unique())
+    )
+
+    state_data = (
+        df[df["Crop_Year"] == selected_year]
+        .groupby("State_Name")["Yield"]
+        .mean()
+        .reset_index()
+        .sort_values("Yield", ascending=False)
+    )
+
+    fig2 = px.bar(
+        state_data.head(20),
+        x="Yield",
+        y="State_Name",
+        orientation="h",
+        color="Yield",
+        color_continuous_scale="Greens",
+        title=f"Average Yield ({selected_year})",
+        labels={"Yield": "Avg Yield (Kg/Ha)", "State_Name": "State"}
+    )
+    fig2.update_layout(
+        yaxis={"autorange": "reversed"},
+        plot_bgcolor="#FAF7F0",
+        paper_bgcolor="#FAF7F0",
+        coloraxis_showscale=False
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+    #####################################
+    # 3 Growth Rate
+    #####################################
+
+    st.subheader("Growth Rate")
+
+    national = (
+        df.groupby("Crop_Year")["Yield"]
+        .mean()
+        .reset_index()
+    )
+
+    national["Growth %"] = (
+        national["Yield"].pct_change() * 100
+    )
+
+    fig3 = px.bar(
+        national,
+        x="Crop_Year",
+        y="Growth %",
+        color="Growth %",
+        color_continuous_scale="RdYlGn",
+        title="National Yield Growth Rate (%)",
+        labels={"Crop_Year": "Year", "Growth %": "YoY Growth (%)"}
+    )
+    fig3.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+    fig3.update_layout(
+        plot_bgcolor="#FAF7F0",
+        paper_bgcolor="#FAF7F0",
+        coloraxis_showscale=False
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+
+    #####################################
+    # 4 Rice Heatmap
+    #####################################
+
+    st.subheader("Rice Yield Heatmap")
+
+    rice = df[df["Crop"] == "Rice"].copy()
+    rice["Yield"] = rice["Yield"] * 1000
+
+    pivot = rice.pivot_table(
+        index="State_Name",
+        columns="Crop_Year",
+        values="Yield",
+        aggfunc="mean"
+    )
+
+    fig4 = px.imshow(
+        pivot,
+        text_auto=False,
+        color_continuous_scale="YlGn",
+        title="Rice Yield by State & Year (Kg/Ha)",
+        labels={"x": "Year", "y": "State", "color": "Yield (Kg/Ha)"}
+    )
+    fig4.update_layout(
+        plot_bgcolor="#FAF7F0",
+        paper_bgcolor="#FAF7F0",
+        height=600
+    )
+    st.plotly_chart(fig4, use_container_width=True)
+
+    st.caption("Data source: Kaggle — Crop Production in India (1997–2015) | 246,091 records")
+
 def main():
     st.set_page_config(page_title="Crop Yield Predictor", page_icon="🌾", layout="centered")
     st.markdown("""<style>
@@ -324,15 +479,20 @@ def main():
     st.title("🌾 Crop Yield Prediction (India)")
     st.write("Estimate crop yield (Quintal/Hectare) based on crop type, state, and cultivation/production costs. Powered by a Random Forest model trained on government agricultural cost data.")
 
-    df = load_data()
+    df = load_data()                  # ML dataset
+    trend_df = load_production_data() # Historical trends dataset
     model = train_model(df)
 
     # Session state tab tracking
     if "tab" not in st.session_state:
         st.session_state.tab = "predict"
 
-    tab1, tab2, tab3 = st.tabs(["🔮 Predict Yield", "🌱 Recommend Crop", "📊 Data Insights"])
-
+    tab1, tab2, tab3, tab4 = st.tabs([
+    "🔮 Predict Yield",
+    "🌱 Recommend Crop",
+    "📊 Data Insights",
+    "📈 Yield Trends"
+])
     with tab1:
         if st.session_state.get("_active_tab", "predict") == "predict" or True:
             show_predict_tab(df, model)
@@ -343,5 +503,7 @@ def main():
     with tab3:
         show_insights_tab(df, model)
 
+    with tab4:
+       show_trends_tab(trend_df)
 if __name__ == "__main__":
     main()
